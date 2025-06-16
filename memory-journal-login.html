@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Journal</title>
+  <style>
+   body{font-family:Arial, sans-serif;background:#f5f5f5;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;}
+  .logo-img{width:150px;margin-top:40px;margin-bottom:40px;}
+  #authBox{background:#fff;padding:2rem;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);width:300px;text-align:center;}
+
+    input { width:100%; padding:0.5rem; margin:0.3rem 0; }
+    button { width:100%; padding:0.6rem; margin-top:0.5rem; background:#4caf50; color:#fff; border:none; cursor:pointer; }
+    button:hover { background:#43a047; }
+    #toggleLink { margin-top:1rem; color:#1976d2; cursor:pointer; }
+    #toggleLink:hover { text-decoration:underline; }
+    #msg { margin-top:0.8rem; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <img src="memory-logo.png" alt="Memory Journal Logo" class="logo-img">
+  <div id="authBox">
+    <h2 id="formTitle">로그인</h2>
+
+    <input id="idInput" placeholder="아이디" />
+    <input id="pwInput" type="password" placeholder="패스워드" />
+    <button id="submitBtn">로그인</button>
+
+    <p id="toggleLink">계정이 없으신가요? 회원가입</p>
+    <p id="msg"></p>
+  </div>
+
+<script>
+const USERS_KEY = 'mj_users';
+const SESSION_KEY = 'mj_session';
+
+
+
+
+function loadUsers() {
+  return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+}
+function saveUsers(arr){ localStorage.setItem(USERS_KEY, JSON.stringify(arr)); }
+function setSession(id){ localStorage.setItem(SESSION_KEY, JSON.stringify({id})); }
+
+let mode = 'login';
+const formTitle = document.getElementById('formTitle');
+const submitBtn = document.getElementById('submitBtn');
+const toggleLink = document.getElementById('toggleLink');
+const msg = document.getElementById('msg');
+msg.style.color = '#d32f2f';
+
+function switchMode(){
+  if(mode === 'login'){
+    mode = 'signup';
+    formTitle.textContent = '회원가입';
+    submitBtn.textContent = '회원가입';
+    toggleLink.textContent = '이미 계정이 있으신가요? 로그인';
+    msg.textContent = '';
+  }else{
+    mode = 'login';
+    formTitle.textContent = '로그인';
+    submitBtn.textContent = '로그인';
+    toggleLink.textContent = '계정이 없으신가요? 회원가입';
+    msg.textContent = '';
+  }
+}
+
+toggleLink.onclick = switchMode;
+
+submitBtn.onclick = () => {
+  const id = document.getElementById('idInput').value.trim();
+  const pw = document.getElementById('pwInput').value.trim();
+  if(!id || !pw){ msg.textContent = '아이디와 패스워드를 모두 입력하세요.'; return; }
+  const users = loadUsers();
+
+  if(mode === 'signup'){
+    if(users.find(u => u.id === id)) { msg.textContent = '이미 존재하는 아이디입니다.'; return; }
+    users.push({id, pw}); saveUsers(users);
+    msg.style.color = '#388e3c';
+    msg.textContent = '회원가입이 완료되었습니다! 이제 로그인하세요.';
+    switchMode();
+  } else {
+    const user = users.find(u => u.id === id);
+    if(!user){ msg.textContent = '존재하지 않는 아이디입니다.'; return; }
+    if(user.pw !== pw){ msg.textContent = '패스워드가 틀렸습니다.'; return; }
+    setSession(id);
+    window.location.href = 'memory-journal.html';
+  }
+};
+</script>
+</body>
+</html>
