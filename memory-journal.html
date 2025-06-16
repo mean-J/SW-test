@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Journal</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; padding:0; background:#fafafa; }
+    header { background:#2e7d32; color:#fff; padding:1rem; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:1.3rem; }
+    header button { margin-left:0.5rem; padding:0.4rem 0.8rem; border:none; cursor:pointer; }
+    .btn { background:#4caf50; color:#fff; }
+    .btn:hover { background:#43a047; }
+    .container { max-width:900px; margin:auto; padding:1rem; }
+    .hidden { display:none; }
+    textarea, input[type="text"], input[type="date"] { width:100%; padding:0.5rem; margin:0.3rem 0; }
+    input[type="file"] { margin:0.5rem 0; }
+    .post-card { background:#fff; padding:1rem; margin:0.5rem 0; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+    .post-card h3 { margin:0 0 0.3rem; }
+    .small { font-size:0.8rem; color:#666; }
+    .photo-thumb { width:60px; height:60px; object-fit:cover; margin-right:4px; border-radius:4px; }
+    .modal { position:fixed; top:0; left:0; width:100%; height:100%;
+           background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:999; }
+    .modal-content { background:#fff; padding:1rem; border-radius:10px; max-width:500px; width:90%; max-height:80%; overflow:auto; }
+    .modal-content img { width:100%; margin-top:0.5rem; border-radius:6px; }
+    .close { float:right; font-size:1.5rem; cursor:pointer; }
+    .hidden { display:none; }
+    .preview-box { position:relative; display:inline-block; margin-right:4px; }
+    .del-btn     { position:absolute; top:2px; right:2px; background:#d32f2f; color:#fff;
+               border:none; border-radius:50%; width:18px; height:18px;
+               font-size:12px; line-height:16px; cursor:pointer; }
+    /*좌우버튼*/
+    .nav-btn{
+      position:absolute;   
+      top:50%; transform:translateY(-50%);
+      background:#2e7d32; color:#fff; border:none;
+      width:32px; height:32px; border-radius:50%; cursor:pointer;
+      font-size:18px; font-weight:bold;
+    }
+    #prevReco{ left:12px;  }
+    #nextReco{ right:12px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Memory Journal</h1>
+  <div id="navBtns"></div>
+</header>
+<div id="recoChoice" class="hidden" style="margin:0.5rem 0 0 1rem;">
+  <button id="lastYearBtn" class="btn">작년의 오늘</button>
+  <button id="randomBtn" class="btn">랜덤 일기 추천</button>
+</div>
+
+
+<div id="recoModal" class="hidden modal">
+  <div class="modal-content">
+    <span id="closeModal" class="close">&times;</span>
+    
+    <button id="prevReco" class="nav-btn">&lt;</button>
+    <button id="nextReco" class="nav-btn">&gt;</button>
+
+    <h3 id="recoTitle"></h3>
+    <p id="recoDate" class="small"></p>
+    <p id="recoBody"></p>
+    <div id="recoPhotos"></div>
+  </div>
+</div>
+
+<div id="viewModal" class="hidden modal">
+  <div class="modal-content">
+    <span id="closeView" class="close">&times;</span>
+    <h3 id="viewTitle"></h3>
+    <p id="viewDate" class="small"></p>
+    <p id="viewBody"></p>
+    <div id="viewPhotos"></div>
+  </div>
+</div>
+
+
+<div class="container">
+  <!-- 글쓰기 --> 
+  <section id="writeSec" class="hidden">
+    <h2 id="writeTitle">새 일기 작성</h2>
+    <input id="wTitle" placeholder="제목" />
+    <textarea id="wBody" rows="5" placeholder="내용"></textarea>
+    <label>작성일: <input id="wDate" type="date" /></label>
+    <input id="wPhotos" type="file" accept="image/*" multiple />
+    <div id="photoPreview"></div>
+    <button id="saveBtn" class="btn">저장</button>
+    <button id="deleteBtn" class="btn hidden" style="background:#d32f2f;">삭제</button>
+  </section>
+
+  <!-- 목록  -->
+  <section id="listSec" class="hidden">
+    <h2>일기 목록</h2>
+    <input id="searchTitle" placeholder="제목 검색" />
+    <input id="searchDate" type="date" />
+    <label><input id="photoOnly" type="checkbox" /> 사진 있는 글만</label>
+    <button id="searchBtn" class="btn">검색</button>
+    <div id="listBox"></div>
+  </section>
+</div>
+
+
+
+<script>
+const LOGIN_PAGE = 'memory-journal-login.html';
+
+
+////팝업 메시지///
+function showAlert(msg){
+  const div = document.createElement('div');
+  div.className = 'modal';
+  div.innerHTML = `
+    <div class="modal-content" style="max-width:300px;">
+      <h4 style="margin-top:0">Memory Journal 알림</h4>
+      <p>${msg}</p>
+      <button class="btn" id="okBtn">확인</button>
+    </div>`;
+  document.body.appendChild(div);
+  div.querySelector('#okBtn').onclick = () => div.remove();
+}
+
+
+
+//////////////// 세션 & 저장 ///////////////////
+const SESSION_KEY = 'mj_session';
+const session = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+if(!session.id){ showAlert('로그인이 필요합니다.'); location.href='memory-journal-login.html'; }
+const userId = session.id;
+const POSTS_KEY = `posts_${userId}`;
+function loadPosts(){ return JSON.parse(localStorage.getItem(POSTS_KEY) || '[]'); }
+function savePosts(arr){ localStorage.setItem(POSTS_KEY, JSON.stringify(arr)); }
+
+//////// 네비게이션 /////////////
+const nav = document.getElementById('navBtns');
+['일기 작성','일기 목록','일기 추천','로그아웃'].forEach(txt=>{
+  const b=document.createElement('button'); b.textContent=txt; b.className='btn'; nav.appendChild(b);
+});
+const [writeBtn,listBtn,recoBtn,logoutBtn]=nav.children;
+const writeSec=document.getElementById('writeSec');
+const listSec=document.getElementById('listSec');
+function show(sec){ writeSec.classList.add('hidden'); listSec.classList.add('hidden'); sec.classList.remove('hidden'); }
+writeBtn.onclick=()=>{ show(writeSec); resetWriteForm(); };
+listBtn.onclick=()=>{ show(listSec); renderList(); };
+logoutBtn.onclick=()=>{ localStorage.removeItem(SESSION_KEY); location.href='memory-journal-login.html';  };
+
+//////////////// 글쓰기 /////////////
+let editMode=false; let editId=null;
+let selectedFiles = []; 
+const wTitle=document.getElementById('wTitle');
+const wBody=document.getElementById('wBody');
+const wDate=document.getElementById('wDate');
+const wPhotos=document.getElementById('wPhotos');
+const photoPreview=document.getElementById('photoPreview');
+const deleteBtn = document.getElementById('deleteBtn');
+function todayLocal(){ return new Date().toLocaleDateString('sv-SE'); } // YYYY-MM-DD
+
+// 과거의 오늘 배열열
+let recoPosts = [];  
+let recoIdx   = 0;   
+
+
+//// i 번째 추천글을 모달에 ////////
+function renderReco(i){
+  const p = recoPosts[i];
+  const multi = recoPosts.length > 1; 
+  mTitle.textContent = multi ? `(${i+1}/${recoPosts.length}) ${p.title}` : p.title;
+  mDate.textContent  = p.createdAt;
+  mBody.textContent  = p.body;
+
+  mPhotosBox.innerHTML = '';
+  p.photos.forEach(src=>{
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.width='60px'; img.style.height='60px';
+    img.style.objectFit='cover'; img.style.marginRight='4px';
+    mPhotosBox.appendChild(img);
+  });
+}
+
+
+
+function resetWriteForm() {
+  editMode = false;
+  editId   = null;
+
+  document.getElementById('writeTitle').textContent = '새 일기 작성';
+  wTitle.value = '';
+  wBody.value  = '';
+  wDate.value  = todayLocal();
+  deleteBtn.classList.add('hidden');
+  wPhotos.value   = '';
+
+  selectedFiles = [];     
+  renderPreview();       
+}
+
+function renderPreview(){
+  photoPreview.innerHTML = '';
+  selectedFiles.forEach((f, idx) => {
+    const box = document.createElement('div'); box.className = 'preview-box';
+    const img = document.createElement('img'); img.className = 'photo-thumb';
+    img.src = URL.createObjectURL(f);
+
+    const del = document.createElement('button');
+    del.textContent = '×'; del.className = 'del-btn';
+    del.dataset.i = idx;
+
+    box.appendChild(img); box.appendChild(del);
+    photoPreview.appendChild(box);
+  });
+}
+photoPreview.onclick = e => {
+  if (e.target.classList.contains('del-btn')) {
+    const i = parseInt(e.target.dataset.i, 10);
+    selectedFiles.splice(i, 1);
+    renderPreview();
+  }
+};
+wPhotos.onchange = e => {            
+  selectedFiles = [...e.target.files];
+  renderPreview();                   
+};
+
+
+
+
+//////////// 저장 버튼 ///////////
+document.getElementById('saveBtn').onclick=async()=>{
+  if(!wTitle.value.trim()||!wBody.value.trim()){ showAlert('제목과 내용을 입력하세요.'); return; }
+  const dateStr = wDate.value || todayLocal();
+  const posts=loadPosts();
+  const readFiles=async(files)=>Promise.all([...files].map(f=>new Promise(res=>{const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(f);} )));
+  const photos = await readFiles(selectedFiles);
+  if(editMode){
+    const idx=posts.findIndex(p=>p.postId===editId); if(idx>-1){ posts[idx].title=wTitle.value; posts[idx].body=wBody.value; posts[idx].photos=photos; posts[idx].createdAt=dateStr; posts[idx].updatedAt=todayLocal(); }
+  }else{
+    posts.push({ postId:crypto.randomUUID(), title:wTitle.value, body:wBody.value, createdAt:dateStr, photos });
+  }
+  savePosts(posts); showAlert('저장되었습니다.'); show(listSec); renderList(); };
+
+
+
+  ////////// 삭제 버튼 //////////////
+  deleteBtn.onclick = () => {           
+  if (!editMode) return;              
+  if (!confirm('이 일기를 정말 삭제할까요?')) return;
+
+  const posts = loadPosts();
+  const idx   = posts.findIndex(p => p.postId === editId);
+  if (idx > -1) {
+    posts.splice(idx, 1);             
+    savePosts(posts);
+    showAlert('삭제되었습니다.');
+  }
+  show(listSec);                       
+  renderList();
+};
+
+
+
+
+///////////목록 & 검색 ////////////////
+const listBox=document.getElementById('listBox');
+function renderList(){
+  const titleQ=document.getElementById('searchTitle').value.trim().toLowerCase();
+  const dateQ=document.getElementById('searchDate').value; 
+  const photoOnly=document.getElementById('photoOnly').checked;
+  const posts=loadPosts();
+  const filtered=posts.filter(p=>{
+    const matchTitle=!titleQ||p.title.toLowerCase().includes(titleQ);
+    const matchDate=!dateQ||p.createdAt===dateQ;
+    const matchPhoto=!photoOnly||p.photos.length>0;
+    return matchTitle&&matchDate&&matchPhoto; });
+  listBox.innerHTML='';
+  if(!filtered.length){ listBox.textContent='일기가 없습니다.'; return; }
+ filtered.reverse().forEach(p=>{
+    const card = document.createElement('div'); card.className = 'post-card';
+    card.innerHTML =
+      `<h3>${p.title}</h3><p class="small">${p.createdAt}</p><p>${p.body.substring(0,100)}...</p>`;
+    card.onclick = () => openPostModal(p);  
+
+   
+    if (p.photos.length){
+      const div = document.createElement('div');
+      p.photos.slice(0,3).forEach(src=>{
+        const img=document.createElement('img');
+        img.src=src; img.className='photo-thumb'; div.appendChild(img);
+      });
+      card.appendChild(div);
+    }
+
+    /*수정 버튼*/
+    const editB = document.createElement('button');
+    editB.textContent = '수정';
+    editB.className   = 'btn';
+
+    editB.onclick = e => {
+      e.stopPropagation();              //  버블링 차단
+
+      editMode = true;
+      editId   = p.postId;
+      show(writeSec);
+
+      document.getElementById('writeTitle').textContent = '일기 수정';
+      wTitle.value = p.title;
+      wBody.value  = p.body;
+      wDate.value  = p.createdAt;
+      deleteBtn.classList.remove('hidden');
+
+     
+      selectedFiles = p.photos.map((b64,i)=>{
+        const [head,body] = b64.split(',');
+        const mime = head.match(/:(.*?);/)[1];
+        const bin  = atob(body);
+        const buf  = new Uint8Array(bin.length);
+        for(let j=0;j<bin.length;j++) buf[j] = bin.charCodeAt(j);
+        return new File([buf], `photo${i}.${mime.split('/')[1]}`, {type:mime});
+      });
+      renderPreview();                  
+    };
+
+    card.appendChild(editB);
+    listBox.appendChild(card);
+  });
+}
+
+document.getElementById('searchBtn').onclick = renderList;
+
+////// 일기 추천 //////
+const recoChoice   = document.getElementById('recoChoice');
+const lastYearBtn  = document.getElementById('lastYearBtn');
+const randomBtn    = document.getElementById('randomBtn');
+
+recoBtn.onclick = () => {
+  
+  recoChoice.classList.toggle('hidden');
+};
+
+// 모달 요소 
+const modal       = document.getElementById('recoModal');
+const closeModal  = document.getElementById('closeModal');
+const mTitle      = document.getElementById('recoTitle');
+const mDate       = document.getElementById('recoDate');
+const mBody       = document.getElementById('recoBody');
+const mPhotosBox  = document.getElementById('recoPhotos');
+
+closeModal.onclick = () => modal.classList.add('hidden');
+
+
+//전문 읽기 모달
+const vModal = document.getElementById('viewModal'),
+      vClose = document.getElementById('closeView'),
+      vTitle = document.getElementById('viewTitle'),
+      vDate  = document.getElementById('viewDate'),
+      vBody  = document.getElementById('viewBody'),
+      vPhotos= document.getElementById('viewPhotos');
+
+vClose.onclick = () => vModal.classList.add('hidden');
+
+function openPostModal(post){
+  vTitle.textContent = post.title;
+  vDate.textContent  = post.createdAt;
+  vBody.textContent  = post.body;
+  vPhotos.innerHTML  = '';
+  post.photos.forEach(src=>{
+    const img = document.createElement('img');
+    img.src = src; vPhotos.appendChild(img);
+  });
+  vModal.classList.remove('hidden');
+}
+
+////// 과거의 오늘 ///////////
+function showRecommendation(isLastYear){
+ 
+  const posts = loadPosts();
+  if(!posts.length){ showAlert('저장된 일기가 없습니다.'); return; }
+
+  const today    = new Date();
+  const md       = today.toLocaleDateString('sv-SE').slice(4); // "-MM-DD"
+
+  if(isLastYear){
+    const lastDate = (today.getFullYear()-1)+md;
+    recoPosts = posts.filter(p => p.createdAt === lastDate);
+    if(!recoPosts.length){ showAlert('작년 오늘 작성된 일기가 없습니다.'); return; }
+  }else{
+    recoPosts = [ posts[Math.floor(Math.random()*posts.length)] ];
+  }
+  
+   // 토글 버튼 숨김//
+  const prevBtn = document.getElementById('prevReco');
+  const nextBtn = document.getElementById('nextReco');
+  const multi   = recoPosts.length > 1;
+  
+  prevBtn.style.display = nextBtn.style.display = multi ? 'block' : 'none'
+
+
+  recoIdx = 0;
+  renderReco(recoIdx);
+
+  modal.classList.remove('hidden');
+  recoChoice.classList.add('hidden');
+}
+
+///// 좌우 버튼 //////
+document.getElementById('prevReco').onclick = () => {
+  if(!recoPosts.length) return;
+  recoIdx = (recoIdx - 1 + recoPosts.length) % recoPosts.length;
+  renderReco(recoIdx);
+};
+
+document.getElementById('nextReco').onclick = () => {
+  if(!recoPosts.length) return;
+  recoIdx = (recoIdx + 1) % recoPosts.length;
+  renderReco(recoIdx);
+};
+
+
+lastYearBtn.onclick = () => showRecommendation(true);
+randomBtn.onclick   = () => showRecommendation(false);
+
+
+show(listSec);
+renderList();
+</script>
+</body>
+</html>
